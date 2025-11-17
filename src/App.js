@@ -10,13 +10,9 @@ import {
   Send,
   MessageSquare,
   Edit,
-  DollarSign,
-  TrendingUp,
-  Lightbulb,
-  ShoppingCart
+  DollarSign
 } from 'lucide-react';
 
-// Sample inventory data with costs
 const INITIAL_INVENTORY = [
   { id: '1', name: "Pizza Dough", stock: 50, unit: "units", threshold: 10, cost: 0.80 },
   { id: '2', name: "Mozzarella Cheese", stock: 20, unit: "kg", threshold: 5, cost: 9.50 },
@@ -53,7 +49,6 @@ const AIAgentInput = ({ inventory, onUpdateStock }) => {
   const handleSubmit = () => {
     if (!inputText.trim()) return;
 
-    // Simulate AI processing
     const text = inputText.toLowerCase();
     let processed = false;
 
@@ -292,7 +287,7 @@ export default function PizzaInventorySystem() {
   };
 
   const handleDelete = (id) => {
-    if (confirm('Are you sure you want to delete this item?')) {
+    if (window.confirm('Are you sure you want to delete this item?')) {
       setInventory(prev => prev.filter(item => item.id !== id));
     }
   };
