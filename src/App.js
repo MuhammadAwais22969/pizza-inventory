@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import { 
   Boxes, 
   Plus, 
@@ -367,43 +366,41 @@ const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm,
   );
 };
 
-const ExportButtons = ({ inventory, isXlsxLoaded }) => { // Added isXlsxLoaded prop
-  const exportToExcel = () => {
-    // Check if the library is loaded
-    if (!isXlsxLoaded || !window.XLSX) {
-      console.error('XLSX library is not loaded yet.');
-      alert('Excel export feature is still loading. Please try again in a moment.');
-      return;
-    }
-
-    // Prepare data for export
-    const exportData = inventory.map(item => ({
-      'Item Name': item.name,
-      'Stock': item.stock,
-      'Unit': item.unit,
-      'Cost per Unit (Rs.)': item.cost,
-      'Total Value (Rs.)': (item.stock * item.cost).toFixed(2),
-      'Threshold': item.threshold,
-      'Status': item.stock < item.threshold ? 'Low Stock' : 'In Stock'
-    }));
-
-    // Create worksheet
-    const ws = window.XLSX.utils.json_to_sheet(exportData); // Use window.XLSX
-    const wb = window.XLSX.utils.book_new(); // Use window.XLSX
-    window.XLSX.utils.book_append_sheet(wb, ws, 'Inventory'); // Use window.XLSX
-
-    // Add summary
-    const summary = [
-      {},
-      { 'Item Name': 'SUMMARY' },
-      { 'Item Name': 'Total Items', 'Stock': inventory.length },
-      { 'Item Name': 'Low Stock Items', 'Stock': inventory.filter(i => i.stock < i.threshold).length },
-      { 'Item Name': 'Total Inventory Value', 'Stock': `Rs. ${inventory.reduce((sum, i) => sum + (i.stock * i.cost), 0).toFixed(2)}` }
-    ];
-    window.XLSX.utils.sheet_add_json(ws, summary, { skipHeader: true, origin: -1 }); // Use window.XLSX
-
-    // Save file
-    window.XLSX.writeFile(wb, `Inventory_${new Date().toISOString().split('T')[0]}.xlsx`); // Use window.XLSX
+const ExportButtons = ({ inventory }) => {
+  
+  // NEW: Simple CSV Export function
+  const exportToCSV = () => {
+    // 1. Define Headers
+    const headers = ['Item Name', 'Stock', 'Unit', 'Cost per Unit (Rs.)', 'Total Value (Rs.)', 'Threshold', 'Status'];
+    
+    // 2. Convert data to CSV rows
+    const rows = inventory.map(item => {
+      const status = item.stock < item.threshold ? 'Low Stock' : 'In Stock';
+      const totalValue = (item.stock * item.cost).toFixed(2);
+      
+      // Escape commas in name by wrapping in quotes
+      const name = `"${item.name.replace(/"/g, '""')}"`; 
+      
+      return [name, item.stock, item.unit, item.cost, totalValue, item.threshold, status].join(',');
+    });
+    
+    // 3. Join all rows with newline characters
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    
+    // 4. Create a Blob (a file in memory)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // 5. Create a temporary link to download the file
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Inventory_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    // 6. Add link to page, click it, and remove it
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const exportToPDF = () => {
@@ -481,12 +478,11 @@ const ExportButtons = ({ inventory, isXlsxLoaded }) => { // Added isXlsxLoaded p
     <div className="bg-white p-4 rounded-lg shadow-lg mb-6">
       <div className="flex flex-col sm:flex-row gap-3">
         <button
-          onClick={exportToExcel}
-          disabled={!isXlsxLoaded} // Disable button until library is loaded
-          className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={exportToCSV} // Changed to call exportToCSV
+          className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-semibold"
         >
           <FileSpreadsheet size={20} />
-          {isXlsxLoaded ? 'Export to Excel' : 'Loading Export...'}
+          Export to CSV (for Excel)
         </button>
         <button
           onClick={exportToPDF}
@@ -496,7 +492,7 @@ const ExportButtons = ({ inventory, isXlsxLoaded }) => { // Added isXlsxLoaded p
           Export to PDF
         </button>
       </div>
-      <p className="text-xs text-gray-500 mt-2 text-center">Download your inventory data as Excel or print as PDF</p>
+      <p className="text-xs text-gray-500 mt-2 text-center">Download your inventory data as CSV or print as PDF</p>
     </div>
   );
 };
@@ -546,40 +542,9 @@ export default function PizzaInventorySystem() {
   const [filterType, setFilterType] = useState('all');
   const [sortType, setSortType] = useState('name-asc');
 
-  // State to track if XLSX script is loaded
-  const [isXlsxLoaded, setIsXlsxLoaded] = useState(false);
+  // REMOVED: No longer need isXlsxLoaded state
 
-  // Dynamically load the XLSX script
-  useEffect(() => {
-    const scriptId = 'xlsx-script';
-    // Check if script is already in the document
-    if (document.getElementById(scriptId)) {
-      if (window.XLSX) {
-        setIsXlsxLoaded(true); // Already loaded
-      }
-      return; // Script is already added or loading
-    }
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = 'https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.full.min.js';
-    script.async = true;
-    script.onload = () => {
-      setIsXlsxLoaded(true); // Set loaded state to true
-    };
-    script.onerror = () => {
-      console.error('Failed to load the XLSX library.');
-    };
-    document.body.appendChild(script);
-
-    return () => {
-      // Clean up the script tag if the component unmounts
-      const existingScript = document.getElementById(scriptId);
-      if (existingScript) {
-        document.body.removeChild(existingScript);
-      }
-    };
-  }, []); // Empty dependency array ensures this runs only once on mount
+  // REMOVED: No longer need the useEffect for loading the script
 
   // Check for low stock and send notifications
   useEffect(() => {
@@ -699,8 +664,8 @@ export default function PizzaInventorySystem() {
         
         <LowStockAlertPanel inventory={inventory} />
 
-        {/* Pass loading state to ExportButtons */}
-        <ExportButtons inventory={inventory} isXlsxLoaded={isXlsxLoaded} />
+        {/* This component no longer needs the isXlsxLoaded prop */}
+        <ExportButtons inventory={inventory} />
 
         {/* Search and Filter */}
         <SearchAndFilter
