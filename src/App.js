@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   Boxes, 
   Plus, 
@@ -11,11 +12,11 @@ import {
   MessageSquare,
   Edit,
   DollarSign,
-  Search,        
-  Filter,        
-  Download,      
-  FileSpreadsheet, 
-  FileText       
+  Search,
+  Filter,
+  Download,
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 
 // Request notification permission when app loads
@@ -287,11 +288,44 @@ const Dashboard = ({ inventory }) => {
   );
 };
 
+const LowStockAlertPanel = ({ inventory }) => {
+  const lowStockItems = inventory.filter(item => item.stock < item.threshold);
+  
+  if (lowStockItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-lg shadow-lg animate-pulse">
+      <div className="flex items-center mb-3">
+        <AlertTriangle className="text-red-500 mr-2" size={24} />
+        <h3 className="text-lg font-semibold text-red-800">
+          ⚠️ Low Stock Alerts ({lowStockItems.length})
+        </h3>
+      </div>
+      <div className="space-y-2">
+        {lowStockItems.map(item => (
+          <div key={item.id} className="bg-white p-3 rounded-md flex justify-between items-center">
+            <div>
+              <span className="font-semibold text-gray-800">{item.name}</span>
+              <span className="text-sm text-gray-600 ml-2">
+                ({item.stock} {item.unit} remaining - needs {item.threshold} {item.unit})
+              </span>
+            </div>
+            <span className="bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
+              Restock Needed
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm, filterType, setFilterType }) => {
   return (
     <div className="bg-white p-4 rounded-lg shadow-lg mb-6">
       <div className="flex flex-col md:flex-row gap-4">
-        {/* Search Bar */}
         <div className="flex-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -305,7 +339,6 @@ const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm,
           </div>
         </div>
 
-        {/* Filter Dropdown */}
         <div className="md:w-64">
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -317,12 +350,11 @@ const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm,
               <option value="all">All Items</option>
               <option value="lowStock">Low Stock Only</option>
               <option value="inStock">In Stock</option>
-              <option value="highValue">High Value (Rs. 100+)</option>
+              <option value="highValue">High Value (Rs. 1000+)</option>
             </select>
           </div>
         </div>
 
-        {/* Sort Dropdown */}
         <div className="md:w-64">
           <select
             onChange={(e) => onFilterChange(e.target.value)}
@@ -338,7 +370,6 @@ const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm,
         </div>
       </div>
 
-      {/* Active Filters Display */}
       {(searchTerm || filterType !== 'all') && (
         <div className="mt-3 flex items-center gap-2">
           <span className="text-sm text-gray-600">Active filters:</span>
@@ -367,44 +398,34 @@ const SearchAndFilter = ({ inventory, onFilterChange, searchTerm, setSearchTerm,
 };
 
 const ExportButtons = ({ inventory }) => {
-  
-  // NEW: Simple CSV Export function
-  const exportToCSV = () => {
-    // 1. Define Headers
-    const headers = ['Item Name', 'Stock', 'Unit', 'Cost per Unit (Rs.)', 'Total Value (Rs.)', 'Threshold', 'Status'];
-    
-    // 2. Convert data to CSV rows
-    const rows = inventory.map(item => {
-      const status = item.stock < item.threshold ? 'Low Stock' : 'In Stock';
-      const totalValue = (item.stock * item.cost).toFixed(2);
-      
-      // Escape commas in name by wrapping in quotes
-      const name = `"${item.name.replace(/"/g, '""')}"`; 
-      
-      return [name, item.stock, item.unit, item.cost, totalValue, item.threshold, status].join(',');
-    });
-    
-    // 3. Join all rows with newline characters
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    
-    // 4. Create a Blob (a file in memory)
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    
-    // 5. Create a temporary link to download the file
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Inventory_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    // 6. Add link to page, click it, and remove it
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const exportToExcel = () => {
+    const exportData = inventory.map(item => ({
+      'Item Name': item.name,
+      'Stock': item.stock,
+      'Unit': item.unit,
+      'Cost per Unit (Rs.)': item.cost,
+      'Total Value (Rs.)': (item.stock * item.cost).toFixed(2),
+      'Threshold': item.threshold,
+      'Status': item.stock < item.threshold ? 'Low Stock' : 'In Stock'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+
+    const summary = [
+      {},
+      { 'Item Name': 'SUMMARY' },
+      { 'Item Name': 'Total Items', 'Stock': inventory.length },
+      { 'Item Name': 'Low Stock Items', 'Stock': inventory.filter(i => i.stock < i.threshold).length },
+      { 'Item Name': 'Total Inventory Value', 'Stock': `Rs. ${inventory.reduce((sum, i) => sum + (i.stock * i.cost), 0).toFixed(2)}` }
+    ];
+    XLSX.utils.sheet_add_json(ws, summary, { skipHeader: true, origin: -1 });
+
+    XLSX.writeFile(wb, `Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const exportToPDF = () => {
-    // Create printable HTML content
     const printWindow = window.open('', '', 'width=800,height=600');
     
     const htmlContent = `
@@ -478,11 +499,11 @@ const ExportButtons = ({ inventory }) => {
     <div className="bg-white p-4 rounded-lg shadow-lg mb-6">
       <div className="flex flex-col sm:flex-row gap-3">
         <button
-          onClick={exportToCSV} // Changed to call exportToCSV
+          onClick={exportToExcel}
           className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-semibold"
         >
           <FileSpreadsheet size={20} />
-          Export to CSV (for Excel)
+          Export to Excel
         </button>
         <button
           onClick={exportToPDF}
@@ -492,41 +513,7 @@ const ExportButtons = ({ inventory }) => {
           Export to PDF
         </button>
       </div>
-      <p className="text-xs text-gray-500 mt-2 text-center">Download your inventory data as CSV or print as PDF</p>
-    </div>
-  );
-};
-
-const LowStockAlertPanel = ({ inventory }) => {
-  const lowStockItems = inventory.filter(item => item.stock < item.threshold);
-  
-  if (lowStockItems.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-lg shadow-lg animate-pulse">
-      <div className="flex items-center mb-3">
-        <AlertTriangle className="text-red-500 mr-2" size={24} />
-        <h3 className="text-lg font-semibold text-red-800">
-          ⚠️ Low Stock Alerts ({lowStockItems.length})
-        </h3>
-      </div>
-      <div className="space-y-2">
-        {lowStockItems.map(item => (
-          <div key={item.id} className="bg-white p-3 rounded-md flex justify-between items-center">
-            <div>
-              <span className="font-semibold text-gray-800">{item.name}</span>
-              <span className="text-sm text-gray-600 ml-2">
-                ({item.stock} {item.unit} remaining - needs {item.threshold} {item.unit})
-              </span>
-            </div>
-            <span className="bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
-              Restock Needed
-            </span>
-          </div>
-        ))}
-      </div>
+      <p className="text-xs text-gray-500 mt-2 text-center">Download your inventory data as Excel or print as PDF</p>
     </div>
   );
 };
@@ -536,17 +523,10 @@ export default function PizzaInventorySystem() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [notifiedItems, setNotifiedItems] = useState(new Set());
-  
-  // Search and Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortType, setSortType] = useState('name-asc');
 
-  // REMOVED: No longer need isXlsxLoaded state
-
-  // REMOVED: No longer need the useEffect for loading the script
-
-  // Check for low stock and send notifications
   useEffect(() => {
     const lowStockItems = inventory.filter(item => item.stock < item.threshold);
     
@@ -573,18 +553,15 @@ export default function PizzaInventorySystem() {
     });
   }, [inventory, notifiedItems]);
 
-  // Filter and Search Logic
   const getFilteredInventory = () => {
     let filtered = [...inventory];
 
-    // Apply search
     if (searchTerm) {
       filtered = filtered.filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Apply filter type
     switch (filterType) {
       case 'lowStock':
         filtered = filtered.filter(item => item.stock < item.threshold);
@@ -593,13 +570,12 @@ export default function PizzaInventorySystem() {
         filtered = filtered.filter(item => item.stock >= item.threshold);
         break;
       case 'highValue':
-        filtered = filtered.filter(item => (item.stock * item.cost) >= 100);
+        filtered = filtered.filter(item => (item.stock * item.cost) >= 1000);
         break;
       default:
         break;
     }
 
-    // Apply sorting
     switch (sortType) {
       case 'name-asc':
         filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -622,7 +598,6 @@ export default function PizzaInventorySystem() {
       default:
         break;
     }
-
     return filtered;
   };
 
@@ -657,17 +632,15 @@ export default function PizzaInventorySystem() {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">🍕 Toss in F11 - Inventory Manager</h1>
-          <p className="text-gray-600">AI-powered inventory management for your pizza restaurant</p>
+          <p className="text-gray-600">AI-powered Inventory Management for your Pizza Restaurant</p>
         </div>
 
         <Dashboard inventory={inventory} />
         
         <LowStockAlertPanel inventory={inventory} />
 
-        {/* This component no longer needs the isXlsxLoaded prop */}
         <ExportButtons inventory={inventory} />
 
-        {/* Search and Filter */}
         <SearchAndFilter
           inventory={inventory}
           onFilterChange={setSortType}
@@ -732,4 +705,4 @@ export default function PizzaInventorySystem() {
       </div>
     </div>
   );
-}
+}    
